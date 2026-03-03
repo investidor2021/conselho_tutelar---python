@@ -347,7 +347,7 @@ def gerar_pdf_pagamento(brasao_path, dados, resultado):
     col_left_x,
     box_left + box_width - 6 * mm,  # largura total da caixa
     y,
-    "Conselheira",
+    "Credor(a)",
     dados.get("nome", "")
     ) 
 
