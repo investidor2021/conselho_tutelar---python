@@ -5,16 +5,28 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 
 
+import streamlit as st
+
 def conectar_planilha():
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive",
     ]
 
-    creds = Credentials.from_service_account_file(
-        "credenciais.json",
-        scopes=scopes
-    )
+    # 1. Tenta pegar da nuvem do Streamlit (Secrets)
+    if "gcp_service_account" in st.secrets:
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        creds = Credentials.from_service_account_info(
+            creds_dict,
+            scopes=scopes
+        )
+    else:
+        # 2. Se não estiver na nuvem (ou não achar o Secret), usa o arquivo local do PC
+        creds = Credentials.from_service_account_file(
+            "credenciais.json",
+            scopes=scopes
+        )
+
 
     client = gspread.authorize(creds)
     spreadsheet = client.open_by_key("1EJN2eziO3rpv2KFavAMIJbD7UQyZZOChGLXt81VTHww")
