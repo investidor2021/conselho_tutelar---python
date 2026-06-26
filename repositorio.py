@@ -3,9 +3,11 @@
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
+import os
 
 
 import streamlit as st
+
 
 def conectar_planilha():
     scopes = [
@@ -13,17 +15,29 @@ def conectar_planilha():
         "https://www.googleapis.com/auth/drive",
     ]
 
-    # 1. Tenta pegar da nuvem do Streamlit (Secrets)
-    if "gcp_service_account" in st.secrets:
-        creds_dict = dict(st.secrets["gcp_service_account"])
-        creds = Credentials.from_service_account_info(
-            creds_dict,
-            scopes=scopes
-        )
-    else:
-        # 2. Se não estiver na nuvem (ou não achar o Secret), usa o arquivo local do PC
+    creds = None
+    if hasattr(st, "secrets"):
+        secret_info = st.secrets.get("gcp_service_account")
+        if secret_info:
+            try:
+                creds_dict = dict(secret_info)
+                creds = Credentials.from_service_account_info(
+                    creds_dict,
+                    scopes=scopes
+                )
+            except Exception as e:
+                st.error("Erro ao carregar gcp_service_account de st.secrets. Verifique seu Secret ou use credenciais.json.")
+                raise
+
+    if creds is None:
+        local_cred_path = "credenciais.json"
+        if not os.path.exists(local_cred_path):
+            raise FileNotFoundError(
+                f"Arquivo de credenciais não encontrado: {local_cred_path}. "
+                "Adicione o arquivo local ou configure st.secrets['gcp_service_account']."
+            )
         creds = Credentials.from_service_account_file(
-            "credenciais.json",
+            local_cred_path,
             scopes=scopes
         )
 
