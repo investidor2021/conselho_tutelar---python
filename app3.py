@@ -139,6 +139,65 @@ def _calcular_ferias_componentes(valor_base, dias_ferias):
     return round(salario_proporcional, 2), round(terco_constitucional, 2)
 
 
+def _referencia_13o_para_ferias_julho(referencia):
+    if _is_julho(referencia):
+        return _add_meses(referencia, -1)
+    return referencia
+
+
+def _obter_salarios_historicos_para_13o(df, nome, ano_ref, meses):
+    if df.empty:
+        return []
+    if "nome" not in df.columns or "tipo" not in df.columns or "referencia" not in df.columns or "salario_base" not in df.columns:
+        return []
+
+    salarios = {}
+    for _, row in df.iterrows():
+        if str(row.get("nome", "")).strip() != str(nome).strip():
+            continue
+        if str(row.get("tipo", "")).strip() != "Mensal":
+            continue
+
+        mes, ano = _parse_referencia(str(row.get("referencia", "")))
+        if ano == ano_ref and mes is not None and 1 <= mes <= meses:
+            salarios[mes] = _normalizar_valor_registro(row.get("salario_base", 0.0))
+
+    return [salarios.get(m) for m in range(1, meses + 1)]
+
+
+def _calcular_total_13o_com_historico(df, nome, referencia, salario_atual):
+    mes_ref, ano_ref = _parse_referencia(referencia)
+    if mes_ref is None or ano_ref is None:
+        return round(salario_atual * 7 / 12, 2)
+
+    salarios = _obter_salarios_historicos_para_13o(df, nome, ano_ref, mes_ref)
+    if not salarios:
+        return round(salario_atual * mes_ref / 12, 2)
+
+    present = [s for s in salarios if s is not None]
+    missing = salarios.count(None)
+    total = sum(present) / 12.0 + salario_atual * missing / 12.0
+    return round(total, 2)
+
+
+def _calcular_13o_adiantamento_julho(valor_total_13o):
+    return round(valor_total_13o / 2, 2)
+
+
+def _criar_resultado_13o_adiantamento(valor_decimo):
+    return {
+        "bruto": round(valor_decimo, 2),
+        "base_inss": 0.0,
+        "inss": 0.0,
+        "base_ir": 0.0,
+        "ir_base": 0.0,
+        "redutor": 0.0,
+        "irrf": 0.0,
+        "liquido": round(valor_decimo, 2),
+        "isento": True,
+    }
+
+
 def _calcular_lancamentos_ferias(referencia, valor_base, data_inicio, dias_ferias):
     end_date = data_inicio + timedelta(days=dias_ferias - 1)
     dias_mes_inicio = _dias_no_mes(data_inicio.year, data_inicio.month)
@@ -645,18 +704,30 @@ if menu == "➕ Novo Pagamento":
 
     pagar_decimo = False
     valor_decimo = 0.0
-    if _is_julho(referencia):
+    referencia_decimo = None
+    valor_total_13o = 0.0
+    if tipo == "Férias" and _is_julho(referencia):
+        referencia_decimo = _referencia_13o_para_ferias_julho(referencia)
+        valor_total_13o = _calcular_total_13o_com_historico(df_registros, nome, referencia, valor)
+        valor_sugerido = _calcular_13o_adiantamento_julho(valor_total_13o)
+
         c13_1, c13_2 = st.columns([1, 2])
         with c13_1:
-            pagar_decimo = st.checkbox("Pagar 1/2 13º", value=False)
+            pagar_decimo = st.checkbox("Incluir 1/2 13º separado", value=True)
         with c13_2:
+            st.caption(
+                f"Férias em julho: adiantamento de 50% sobre {int(_parse_referencia(referencia)[0])}/12 avos. "
+                f"Referência do 13º: {referencia_decimo}."
+            )
             if pagar_decimo:
                 valor_decimo = st.number_input(
                     "Valor 1/2 13º",
                     min_value=0.0,
-                    value=round(valor / 2, 2),
-                    step=100.0
+                    value=valor_sugerido,
+                    step=0.01
                 )
+            else:
+                st.markdown(f"Valor sugerido: {_fmt_moeda_br(valor_sugerido)}")
     resultado = st.session_state.resultado
 
 
@@ -683,9 +754,26 @@ if menu == "➕ Novo Pagamento":
                 referencia, valor_ajustado, data_inicio, dias_ferias
             )
 
+            if _is_julho(referencia) and pagar_decimo and valor_decimo > 0:
+                lancamentos.append({
+                    "etapa": "13º - 1ª Parcela",
+                    "referencia": referencia_decimo,
+                    "dias_trabalhados": "",
+                    "dias_desconto": "",
+                    "ferias_bruto": 0.0,
+                    "proventos": [
+                        ("1/2 13º", valor_decimo),
+                    ],
+                    "descontos": [],
+                    "bruto_base": valor_decimo,
+                    "is_13o": True,
+                })
+
             resultados = []
             for lanc in lancamentos:
-                if "Pagamento" in lanc["etapa"]:
+                if lanc.get("is_13o"):
+                    resultados.append(_criar_resultado_13o_adiantamento(lanc["bruto_base"]))
+                elif "Pagamento" in lanc["etapa"]:
                     salario_base = valor_ajustado
                     ferias_bruto = lanc.get("ferias_bruto", 0.0)
                     total_bruto = salario_base + ferias_bruto
@@ -726,7 +814,12 @@ if menu == "➕ Novo Pagamento":
                 "ferias_dias_mes_inicio": dias_ferias_mes_inicio,
                 "ferias_dias_mes_seguinte": dias_ferias_mes_seguinte,
                 "valor_original": valor,
-                "valor_ajustado": valor_ajustado
+                "valor_ajustado": valor_ajustado,
+                "valor_total_13o": valor_total_13o,
+                "valor_decimo": valor_decimo,
+                "referencia_decimo": referencia_decimo,
+                "meses_13o": int(_parse_referencia(referencia)[0]) if _parse_referencia(referencia)[0] else None,
+                "decimo_adiantamento": _criar_resultado_13o_adiantamento(valor_decimo) if pagar_decimo and valor_decimo > 0 else None,
             }
 
         else:
@@ -747,6 +840,7 @@ if menu == "➕ Novo Pagamento":
                     "IRRF": _fmt_moeda_br(res["irrf"]),
                     "Líquido": _fmt_moeda_br(res["liquido"]),
                 })
+
 
             st.dataframe(pd.DataFrame(linhas), use_container_width=True)
 
@@ -881,14 +975,15 @@ if menu == "➕ Novo Pagamento":
             dados_ferias = st.session_state.resultado_ferias
             grupo_id = f"{nome}-{_fmt_data(dados_ferias['ferias_inicio'])}-{dados_ferias['ferias_dias']}"
             for lanc, res in zip(dados_ferias["lancamentos"], dados_ferias["resultados"]):
-                if pagamento_ja_existe(sheet, nome, lanc["referencia"], "Férias"):
-                    st.error(f"❌ Já existe lançamento de férias para {lanc['referencia']}.")
+                registro_tipo = "13º" if lanc.get("is_13o") else "Férias"
+                if pagamento_ja_existe(sheet, nome, lanc["referencia"], registro_tipo):
+                    st.error(f"❌ Já existe lançamento para {lanc['referencia']} ({registro_tipo}).")
                     st.stop()
                 registro = {
                     "nome": nome,
                     "referencia": lanc["referencia"],
                     "competencia": lanc["referencia"],
-                    "tipo": "Férias",
+                    "tipo": registro_tipo,
                     "etapa": lanc["etapa"],
                     "ferias_grupo": grupo_id,
                     "ferias_inicio": _fmt_data(dados_ferias["ferias_inicio"]),
@@ -913,7 +1008,12 @@ if menu == "➕ Novo Pagamento":
                     "redutor": res["redutor"],
                     "irrf": res["irrf"],
                     "liquido": res["liquido"],
+                    "decimo_terceiro": lanc.get("bruto_base") if lanc.get("is_13o") else "",
                 }
+                if lanc.get("is_13o"):
+                    registro["ferias_bruto"] = 0.0
+                    registro["ferias_salario"] = 0.0
+                    registro["ferias_terco"] = 0.0
                 if "Pagamento" in lanc["etapa"]:
                     ferias_salario, ferias_terco = _calcular_ferias_componentes(
                         dados_ferias["valor_ajustado"], dados_ferias["ferias_dias"]
