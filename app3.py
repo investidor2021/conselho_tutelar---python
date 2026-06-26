@@ -165,14 +165,17 @@ def _obter_salarios_historicos_para_13o(df, nome, ano_ref, meses):
     return [salarios.get(m) for m in range(1, meses + 1)]
 
 
-def _calcular_total_13o_com_historico(df, nome, referencia, salario_atual):
+def _calcular_total_13o_com_historico(df, nome, referencia, salario_atual, meses=None):
     mes_ref, ano_ref = _parse_referencia(referencia)
-    if mes_ref is None or ano_ref is None:
-        return round(salario_atual * 7 / 12, 2)
+    if meses is None:
+        meses = mes_ref
 
-    salarios = _obter_salarios_historicos_para_13o(df, nome, ano_ref, mes_ref)
+    if mes_ref is None or ano_ref is None:
+        return round(salario_atual * (meses or 7) / 12, 2)
+
+    salarios = _obter_salarios_historicos_para_13o(df, nome, ano_ref, meses)
     if not salarios:
-        return round(salario_atual * mes_ref / 12, 2)
+        return round(salario_atual * meses / 12, 2)
 
     present = [s for s in salarios if s is not None]
     missing = salarios.count(None)
@@ -182,6 +185,26 @@ def _calcular_total_13o_com_historico(df, nome, referencia, salario_atual):
 
 def _calcular_13o_adiantamento_julho(valor_total_13o):
     return round(valor_total_13o / 2, 2)
+
+
+def _meses_13o_ferias(data_inicio):
+    if not data_inicio:
+        return None
+    if data_inicio.month == 6:
+        return 6
+    if data_inicio.month == 7:
+        return 7
+    return None
+
+
+def _referencia_13o_para_ferias(referencia, data_inicio):
+    if not referencia or not data_inicio:
+        return referencia
+    if data_inicio.month == 7:
+        return _add_meses(referencia, -1)
+    if data_inicio.month == 6:
+        return _add_meses(referencia, 1)
+    return referencia
 
 
 def _criar_resultado_13o_adiantamento(valor_decimo):
@@ -706,17 +729,22 @@ if menu == "➕ Novo Pagamento":
     valor_decimo = 0.0
     referencia_decimo = None
     valor_total_13o = 0.0
-    if tipo == "Férias" and _is_julho(referencia):
-        referencia_decimo = _referencia_13o_para_ferias_julho(referencia)
-        valor_total_13o = _calcular_total_13o_com_historico(df_registros, nome, referencia, valor)
+    meses_13o = None
+    if tipo == "Férias" and data_inicio and data_inicio.month in (6, 7):
+        meses_13o = _meses_13o_ferias(data_inicio)
+        referencia_decimo = _referencia_13o_para_ferias(referencia, data_inicio)
+        valor_total_13o = _calcular_total_13o_com_historico(
+            df_registros, nome, referencia, valor, meses=meses_13o
+        )
         valor_sugerido = _calcular_13o_adiantamento_julho(valor_total_13o)
 
         c13_1, c13_2 = st.columns([1, 2])
         with c13_1:
             pagar_decimo = st.checkbox("Incluir 1/2 13º separado", value=True)
         with c13_2:
+            mes_extenso = "julho" if data_inicio.month == 7 else "junho"
             st.caption(
-                f"Férias em julho: adiantamento de 50% sobre {int(_parse_referencia(referencia)[0])}/12 avos. "
+                f"Férias em {mes_extenso}: adiantamento de 50% sobre {meses_13o}/12 avos. "
                 f"Referência do 13º: {referencia_decimo}."
             )
             if pagar_decimo:
@@ -754,7 +782,7 @@ if menu == "➕ Novo Pagamento":
                 referencia, valor_ajustado, data_inicio, dias_ferias
             )
 
-            if _is_julho(referencia) and pagar_decimo and valor_decimo > 0:
+            if data_inicio and data_inicio.month in (6, 7) and pagar_decimo and valor_decimo > 0:
                 lancamentos.append({
                     "etapa": "13º - 1ª Parcela",
                     "referencia": referencia_decimo,
@@ -818,7 +846,7 @@ if menu == "➕ Novo Pagamento":
                 "valor_total_13o": valor_total_13o,
                 "valor_decimo": valor_decimo,
                 "referencia_decimo": referencia_decimo,
-                "meses_13o": int(_parse_referencia(referencia)[0]) if _parse_referencia(referencia)[0] else None,
+                "meses_13o": meses_13o,
                 "decimo_adiantamento": _criar_resultado_13o_adiantamento(valor_decimo) if pagar_decimo and valor_decimo > 0 else None,
             }
 
