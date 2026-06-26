@@ -4,9 +4,39 @@ import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 import os
+import json
 
 
 import streamlit as st
+
+
+def _load_gcp_secrets():
+    if not hasattr(st, "secrets"):
+        return None
+
+    secret_info = st.secrets.get("gcp_service_account")
+    if not secret_info:
+        return None
+
+    if isinstance(secret_info, str):
+        try:
+            return json.loads(secret_info)
+        except json.JSONDecodeError:
+            raise ValueError(
+                "O secret gcp_service_account em Streamlit precisa ser JSON válido. "
+                "Verifique a configuração do secret."
+            )
+
+    if isinstance(secret_info, dict):
+        return secret_info
+
+    try:
+        return dict(secret_info)
+    except Exception:
+        raise ValueError(
+            "O secret gcp_service_account não está em formato esperado. "
+            "Use um objeto JSON com as chaves do service account."
+        )
 
 
 def conectar_planilha():
@@ -16,30 +46,32 @@ def conectar_planilha():
     ]
 
     creds = None
-    if hasattr(st, "secrets"):
-        secret_info = st.secrets.get("gcp_service_account")
-        if secret_info:
-            try:
-                creds_dict = dict(secret_info)
-                creds = Credentials.from_service_account_info(
-                    creds_dict,
-                    scopes=scopes
-                )
-            except Exception as e:
-                st.error("Erro ao carregar gcp_service_account de st.secrets. Verifique seu Secret ou use credenciais.json.")
-                raise
+    secret_info = _load_gcp_secrets()
+    if secret_info:
+        try:
+            creds = Credentials.from_service_account_info(
+                secret_info,
+                scopes=scopes
+            )
+        except Exception as e:
+            st.error(
+                "Erro ao carregar gcp_service_account de st.secrets. "
+                "Verifique seu Secret ou use credenciais.json local."
+            )
+            raise
 
     if creds is None:
         local_cred_path = "credenciais.json"
-        if not os.path.exists(local_cred_path):
-            raise FileNotFoundError(
-                f"Arquivo de credenciais não encontrado: {local_cred_path}. "
-                "Adicione o arquivo local ou configure st.secrets['gcp_service_account']."
+        if os.path.exists(local_cred_path):
+            creds = Credentials.from_service_account_file(
+                local_cred_path,
+                scopes=scopes
             )
-        creds = Credentials.from_service_account_file(
-            local_cred_path,
-            scopes=scopes
-        )
+        else:
+            raise FileNotFoundError(
+                f"Nenhuma credencial encontrada. Em Streamlit Cloud, configure st.secrets['gcp_service_account'] "
+                f"com o JSON da service account. Localmente, adicione o arquivo {local_cred_path}."
+            )
 
 
     client = gspread.authorize(creds)
