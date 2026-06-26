@@ -30,12 +30,23 @@ def _load_gcp_secrets():
     if isinstance(secret_info, dict):
         return secret_info
 
+    if hasattr(secret_info, "items"):
+        try:
+            return dict(secret_info.items())
+        except Exception:
+            pass
+
     try:
         return dict(secret_info)
     except Exception:
+        pass
+
+    try:
+        return json.loads(str(secret_info))
+    except Exception:
         raise ValueError(
             "O secret gcp_service_account não está em formato esperado. "
-            "Use um objeto JSON com as chaves do service account."
+            "No Streamlit Cloud, ele deve ser um JSON válido com as chaves do service account."
         )
 
 
