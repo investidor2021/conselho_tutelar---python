@@ -184,7 +184,7 @@ def _calcular_total_13o_com_historico(df, nome, referencia, salario_atual, meses
 
 
 def _calcular_13o_adiantamento_julho(valor_total_13o):
-    return round(valor_total_13o / 2, 2)
+    return round(valor_total_13o, 2)
 
 
 def _meses_13o_ferias(data_inicio, referencia=None):
@@ -205,6 +205,15 @@ def _referencia_13o_para_ferias(referencia, data_inicio):
     if not referencia or not data_inicio:
         return referencia
     return referencia
+
+
+def _meses_13o_rescisao(referencia):
+    mes_ref, _ = _parse_referencia(referencia)
+    if mes_ref is None:
+        return None
+    if mes_ref <= 6:
+        return mes_ref
+    return max(0, mes_ref - 6)
 
 
 def _criar_resultado_13o_adiantamento(valor_decimo):
@@ -804,13 +813,13 @@ if menu == "➕ Novo Pagamento":
                 st.markdown(f"Valor sugerido: {_fmt_moeda_br(valor_sugerido)}")
 
         if auto_decimo_julho:
-            st.info("Referência em julho: o 1/2 13º foi incluído automaticamente no mês 07 com 6/12 avos.")
+            st.info("Referência em julho: o valor do 13º foi incluído automaticamente como 6/12 avos.")
             if historico_13o:
                 with st.expander("Histórico de cálculo do 13º"):
                     for item in historico_13o:
                         st.write(f"{item['referencia']}: salário {_fmt_moeda_br(item['salario'])} → 1/12 = {_fmt_moeda_br(item['avo'])} ({item['origem']})")
                     st.write(f"Total calculado: {_fmt_moeda_br(valor_total_13o)}")
-                    st.write(f"Metade para adiantamento: {_fmt_moeda_br(valor_sugerido)}")
+                    st.write(f"Valor para o adiantamento: {_fmt_moeda_br(valor_sugerido)}")
     resultado = st.session_state.resultado
 
 
@@ -907,7 +916,17 @@ if menu == "➕ Novo Pagamento":
             }
 
         else:
-            st.session_state.resultado = calcular_rescisao(valor_ajustado)
+            resultado_rescisao = calcular_rescisao(valor_ajustado)
+            meses_13o_rescisao = _meses_13o_rescisao(referencia)
+            if meses_13o_rescisao is not None and meses_13o_rescisao > 0:
+                valor_total_13o_rescisao = _calcular_total_13o_com_historico(
+                    df_registros, nome, referencia, valor, meses=meses_13o_rescisao
+                )
+                historico_rescisao = _montar_historico_13o(df_registros, nome, referencia, valor, meses_13o_rescisao)
+                resultado_rescisao["decimo_terceiro"] = round(valor_total_13o_rescisao, 2)
+                resultado_rescisao["meses_13o"] = meses_13o_rescisao
+                resultado_rescisao["historico_13o"] = historico_rescisao
+            st.session_state.resultado = resultado_rescisao
 
         st.success("Cálculo realizado com sucesso")
 
@@ -1007,7 +1026,9 @@ if menu == "➕ Novo Pagamento":
             col1.metric("💰 Valor Bruto (original)", _fmt_moeda_br(valor))
             col1.metric("💰 Valor com faltas", _fmt_moeda_br(valor_ajustado))
             if pagar_decimo:
-                col1.metric("💰 1/2 13º", _fmt_moeda_br(valor_decimo))
+                col1.metric("💰 13º", _fmt_moeda_br(valor_decimo))
+            if tipo == "Rescisão" and resultado.get("decimo_terceiro", 0.0) > 0:
+                col1.metric("💰 13º (rescisão)", _fmt_moeda_br(resultado["decimo_terceiro"]))
             col1.metric("🧾 Base INSS", _fmt_moeda_br(resultado["base_inss"]))
             col1.metric("🧮 INSS", _fmt_moeda_br(resultado["inss"]))
 
