@@ -204,10 +204,6 @@ def _meses_13o_ferias(data_inicio, referencia=None):
 def _referencia_13o_para_ferias(referencia, data_inicio):
     if not referencia or not data_inicio:
         return referencia
-    if data_inicio.month == 7:
-        return _add_meses(referencia, -1)
-    if data_inicio.month == 6:
-        return _add_meses(referencia, 1)
     return referencia
 
 
@@ -741,7 +737,8 @@ if menu == "➕ Novo Pagamento":
             df_registros, nome, referencia, valor, meses=meses_13o
         )
         valor_sugerido = _calcular_13o_adiantamento_julho(valor_total_13o)
-        auto_decimo_julho = _parse_referencia(referencia)[0] == 7
+        mes_ref, _ = _parse_referencia(referencia)
+        auto_decimo_julho = mes_ref == 7 or (data_inicio and data_inicio.month == 7)
 
         c13_1, c13_2 = st.columns([1, 2])
         with c13_1:
