@@ -197,7 +197,7 @@ def _meses_13o_ferias(data_inicio, referencia=None):
     if data_inicio.month == 6:
         return 6
     if data_inicio.month == 7:
-        return 7
+        return 6
     return None
 
 
@@ -841,11 +841,14 @@ if menu == "➕ Novo Pagamento":
             if tem_ferias_ref:
                 st.error("Já existem lançamentos de férias para esta referência. Ajuste o pagamento.")
                 st.stop()
-            total_bruto = valor_ajustado + (valor_decimo if pagar_decimo else 0.0)
+            total_bruto = valor_ajustado
+            if pagar_decimo and valor_decimo > 0:
+                total_bruto += valor_decimo
             resultado_mensal = calcular_mensal(total_bruto)
             if pagar_decimo and valor_decimo > 0:
                 resultado_mensal["proventos"] = [("Salário base", valor_ajustado), ("1ª parcela 13º", valor_decimo)]
                 resultado_mensal["decimo_terceiro"] = round(valor_decimo, 2)
+                resultado_mensal["bruto"] = round(total_bruto, 2)
             st.session_state.resultado = resultado_mensal
 
         elif tipo == "Férias":
@@ -861,7 +864,7 @@ if menu == "➕ Novo Pagamento":
                 referencia_13_julho = _referencia_13_em_07(referencia)
                 alvo = None
                 for lanc in lancamentos:
-                    if "Pagamento" in lanc.get("etapa", "") and str(lanc.get("referencia", "")) == referencia_13_julho:
+                    if str(lanc.get("referencia", "")) == referencia_13_julho:
                         alvo = lanc
                         break
                 if alvo is None:
