@@ -187,9 +187,13 @@ def _calcular_13o_adiantamento_julho(valor_total_13o):
     return round(valor_total_13o / 2, 2)
 
 
-def _meses_13o_ferias(data_inicio):
+def _meses_13o_ferias(data_inicio, referencia=None):
     if not data_inicio:
         return None
+
+    mes_ref, _ = _parse_referencia(referencia) if referencia else (None, None)
+    if mes_ref == 7:
+        return 6
     if data_inicio.month == 6:
         return 6
     if data_inicio.month == 7:
@@ -731,16 +735,21 @@ if menu == "➕ Novo Pagamento":
     valor_total_13o = 0.0
     meses_13o = None
     if tipo == "Férias" and data_inicio and data_inicio.month in (6, 7):
-        meses_13o = _meses_13o_ferias(data_inicio)
+        meses_13o = _meses_13o_ferias(data_inicio, referencia)
         referencia_decimo = _referencia_13o_para_ferias(referencia, data_inicio)
         valor_total_13o = _calcular_total_13o_com_historico(
             df_registros, nome, referencia, valor, meses=meses_13o
         )
         valor_sugerido = _calcular_13o_adiantamento_julho(valor_total_13o)
+        auto_decimo_julho = _parse_referencia(referencia)[0] == 7
 
         c13_1, c13_2 = st.columns([1, 2])
         with c13_1:
-            pagar_decimo = st.checkbox("Incluir 1/2 13º separado", value=True)
+            pagar_decimo = st.checkbox(
+                "Incluir 1/2 13º separado",
+                value=auto_decimo_julho or True,
+                disabled=auto_decimo_julho,
+            )
         with c13_2:
             mes_extenso = "julho" if data_inicio.month == 7 else "junho"
             st.caption(
@@ -752,10 +761,14 @@ if menu == "➕ Novo Pagamento":
                     "Valor 1/2 13º",
                     min_value=0.0,
                     value=valor_sugerido,
-                    step=0.01
+                    step=0.01,
+                    disabled=auto_decimo_julho,
                 )
             else:
                 st.markdown(f"Valor sugerido: {_fmt_moeda_br(valor_sugerido)}")
+
+        if auto_decimo_julho:
+            st.info("Referência em julho: o 1/2 13º foi preenchido automaticamente com 6/12 avos.")
     resultado = st.session_state.resultado
 
 
