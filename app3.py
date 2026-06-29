@@ -847,9 +847,10 @@ if menu == "➕ Novo Pagamento":
             )
 
             if data_inicio and data_inicio.month in (6, 7) and pagar_decimo and valor_decimo > 0:
+                referencia_13_julho = "07/2026" if str(referencia).endswith("2026") else referencia
                 lancamentos.append({
                     "etapa": "13º - 1ª Parcela",
-                    "referencia": referencia_decimo,
+                    "referencia": referencia_13_julho,
                     "dias_trabalhados": "",
                     "dias_desconto": "",
                     "ferias_bruto": 0.0,
