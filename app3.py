@@ -791,7 +791,7 @@ if menu == "➕ Novo Pagamento":
         c13_1, c13_2 = st.columns([1, 2])
         with c13_1:
             pagar_decimo = st.checkbox(
-                "Incluir 13º no mês 07",
+                "Incluir 1ª parcela 13º no mês 07",
                 value=auto_decimo_julho or True,
                 disabled=auto_decimo_julho,
             )
@@ -803,7 +803,7 @@ if menu == "➕ Novo Pagamento":
             )
             if pagar_decimo:
                 valor_decimo = st.number_input(
-                    "Valor 13º",
+                    "Valor 1ª parcela 13º",
                     min_value=0.0,
                     value=valor_sugerido,
                     step=0.01,
@@ -847,15 +847,16 @@ if menu == "➕ Novo Pagamento":
             )
 
             if data_inicio and data_inicio.month in (6, 7) and pagar_decimo and valor_decimo > 0:
-                referencia_13_julho = "07/2026" if str(referencia).endswith("2026") else referencia
-                lancamentos.append({
-                    "etapa": "13º",
+                mes_ref, ano_ref = _parse_referencia(referencia)
+                referencia_13_julho = f"07/{ano_ref}" if mes_ref is not None and ano_ref is not None else "07/2026"
+                lancamentos.insert(0, {
+                    "etapa": "1ª parcela 13º",
                     "referencia": referencia_13_julho,
                     "dias_trabalhados": "",
                     "dias_desconto": "",
                     "ferias_bruto": 0.0,
                     "proventos": [
-                        ("13º", valor_decimo),
+                        ("1ª parcela 13º", valor_decimo),
                     ],
                     "descontos": [],
                     "bruto_base": valor_decimo,
