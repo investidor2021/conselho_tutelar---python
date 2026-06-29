@@ -221,6 +221,43 @@ def _criar_resultado_13o_adiantamento(valor_decimo):
     }
 
 
+def _montar_historico_13o(df, nome, referencia, valor_atual, meses):
+    mes_ref, ano_ref = _parse_referencia(referencia)
+    if mes_ref is None or ano_ref is None or meses is None:
+        return []
+
+    historico = []
+    for mes in range(1, meses + 1):
+        registro = None
+        for _, row in df.iterrows():
+            if str(row.get("nome", "")).strip() != str(nome).strip():
+                continue
+            if str(row.get("tipo", "")).strip() != "Mensal":
+                continue
+            mes_row, ano_row = _parse_referencia(str(row.get("referencia", "")))
+            if ano_row == ano_ref and mes_row == mes:
+                registro = row
+                break
+        if registro is not None:
+            valor = _normalizar_valor_registro(registro.get("salario_base", 0.0))
+            historico.append({
+                "mes": mes,
+                "referencia": f"{mes:02d}/{ano_ref}",
+                "salario": valor,
+                "avo": round(valor / 12.0, 2),
+                "origem": "histórico",
+            })
+        else:
+            historico.append({
+                "mes": mes,
+                "referencia": f"{mes:02d}/{ano_ref}",
+                "salario": valor_atual,
+                "avo": round(valor_atual / 12.0, 2),
+                "origem": "salário atual",
+            })
+    return historico
+
+
 def _calcular_lancamentos_ferias(referencia, valor_base, data_inicio, dias_ferias):
     end_date = data_inicio + timedelta(days=dias_ferias - 1)
     dias_mes_inicio = _dias_no_mes(data_inicio.year, data_inicio.month)
@@ -730,6 +767,7 @@ if menu == "➕ Novo Pagamento":
     referencia_decimo = None
     valor_total_13o = 0.0
     meses_13o = None
+    historico_13o = []
     if tipo == "Férias" and data_inicio and data_inicio.month in (6, 7):
         meses_13o = _meses_13o_ferias(data_inicio, referencia)
         referencia_decimo = _referencia_13o_para_ferias(referencia, data_inicio)
@@ -737,13 +775,14 @@ if menu == "➕ Novo Pagamento":
             df_registros, nome, referencia, valor, meses=meses_13o
         )
         valor_sugerido = _calcular_13o_adiantamento_julho(valor_total_13o)
+        historico_13o = _montar_historico_13o(df_registros, nome, referencia, valor, meses_13o)
         mes_ref, _ = _parse_referencia(referencia)
         auto_decimo_julho = mes_ref == 7 or (data_inicio and data_inicio.month == 7)
 
         c13_1, c13_2 = st.columns([1, 2])
         with c13_1:
             pagar_decimo = st.checkbox(
-                "Incluir 1/2 13º separado",
+                "Incluir 1/2 13º no mês 07",
                 value=auto_decimo_julho or True,
                 disabled=auto_decimo_julho,
             )
@@ -765,7 +804,13 @@ if menu == "➕ Novo Pagamento":
                 st.markdown(f"Valor sugerido: {_fmt_moeda_br(valor_sugerido)}")
 
         if auto_decimo_julho:
-            st.info("Referência em julho: o 1/2 13º foi preenchido automaticamente com 6/12 avos.")
+            st.info("Referência em julho: o 1/2 13º foi incluído automaticamente no mês 07 com 6/12 avos.")
+            if historico_13o:
+                with st.expander("Histórico de cálculo do 13º"):
+                    for item in historico_13o:
+                        st.write(f"{item['referencia']}: salário {_fmt_moeda_br(item['salario'])} → 1/12 = {_fmt_moeda_br(item['avo'])} ({item['origem']})")
+                    st.write(f"Total calculado: {_fmt_moeda_br(valor_total_13o)}")
+                    st.write(f"Metade para adiantamento: {_fmt_moeda_br(valor_sugerido)}")
     resultado = st.session_state.resultado
 
 
@@ -857,6 +902,7 @@ if menu == "➕ Novo Pagamento":
                 "valor_decimo": valor_decimo,
                 "referencia_decimo": referencia_decimo,
                 "meses_13o": meses_13o,
+                "historico_13o": historico_13o,
                 "decimo_adiantamento": _criar_resultado_13o_adiantamento(valor_decimo) if pagar_decimo and valor_decimo > 0 else None,
             }
 
