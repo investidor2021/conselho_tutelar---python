@@ -230,6 +230,13 @@ def _criar_resultado_13o_adiantamento(valor_decimo):
     }
 
 
+def _referencia_13_em_07(referencia):
+    mes_ref, ano_ref = _parse_referencia(referencia)
+    if mes_ref == 7 and ano_ref is not None:
+        return f"07/{ano_ref}"
+    return referencia
+
+
 def _montar_historico_13o(df, nome, referencia, valor_atual, meses):
     mes_ref, ano_ref = _parse_referencia(referencia)
     if mes_ref is None or ano_ref is None or meses is None:
@@ -835,7 +842,11 @@ if menu == "➕ Novo Pagamento":
                 st.error("Já existem lançamentos de férias para esta referência. Ajuste o pagamento.")
                 st.stop()
             total_bruto = valor_ajustado + (valor_decimo if pagar_decimo else 0.0)
-            st.session_state.resultado = calcular_mensal(total_bruto)
+            resultado_mensal = calcular_mensal(total_bruto)
+            if pagar_decimo and valor_decimo > 0:
+                resultado_mensal["proventos"] = [("Salário base", valor_ajustado), ("1ª parcela 13º", valor_decimo)]
+                resultado_mensal["decimo_terceiro"] = round(valor_decimo, 2)
+            st.session_state.resultado = resultado_mensal
 
         elif tipo == "Férias":
             if not data_inicio or not dias_ferias:
@@ -847,8 +858,7 @@ if menu == "➕ Novo Pagamento":
             )
 
             if data_inicio and data_inicio.month in (6, 7) and pagar_decimo and valor_decimo > 0:
-                mes_ref, ano_ref = _parse_referencia(referencia)
-                referencia_13_julho = f"07/{ano_ref}" if mes_ref is not None and ano_ref is not None else "07/2026"
+                referencia_13_julho = _referencia_13_em_07(referencia)
                 alvo = None
                 for lanc in lancamentos:
                     if "Pagamento" in lanc.get("etapa", "") and str(lanc.get("referencia", "")) == referencia_13_julho:
@@ -1085,13 +1095,14 @@ if menu == "➕ Novo Pagamento":
             grupo_id = f"{nome}-{_fmt_data(dados_ferias['ferias_inicio'])}-{dados_ferias['ferias_dias']}"
             for lanc, res in zip(dados_ferias["lancamentos"], dados_ferias["resultados"]):
                 registro_tipo = "13º" if lanc.get("is_13o") else "Férias"
-                if pagamento_ja_existe(sheet, nome, lanc["referencia"], registro_tipo):
-                    st.error(f"❌ Já existe lançamento para {lanc['referencia']} ({registro_tipo}).")
+                referencia_registro = _referencia_13_em_07(lanc["referencia"]) if pagar_decimo and valor_decimo > 0 and str(lanc.get("referencia", "")).startswith("07/") else lanc["referencia"]
+                if pagamento_ja_existe(sheet, nome, referencia_registro, registro_tipo):
+                    st.error(f"❌ Já existe lançamento para {referencia_registro} ({registro_tipo}).")
                     st.stop()
                 registro = {
                     "nome": nome,
-                    "referencia": lanc["referencia"],
-                    "competencia": lanc["referencia"],
+                    "referencia": referencia_registro,
+                    "competencia": referencia_registro,
                     "tipo": registro_tipo,
                     "etapa": lanc["etapa"],
                     "ferias_grupo": grupo_id,
@@ -1141,10 +1152,11 @@ if menu == "➕ Novo Pagamento":
             if pagamento_ja_existe(sheet, nome, referencia, tipo):
                 st.error("❌ Já existe um pagamento cadastrado para esse período.")
                 st.stop()
+            referencia_registro = _referencia_13_em_07(referencia) if pagar_decimo and valor_decimo > 0 else referencia
             registro = {
                 "nome": nome,
-                "referencia": referencia,
-                "competencia": referencia,
+                "referencia": referencia_registro,
+                "competencia": referencia_registro,
                 "tipo": tipo,
                 "salario_base": valor_original,
                 "salario_ajustado": valor_ajustado,
