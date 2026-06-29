@@ -849,28 +849,30 @@ if menu == "➕ Novo Pagamento":
             if data_inicio and data_inicio.month in (6, 7) and pagar_decimo and valor_decimo > 0:
                 mes_ref, ano_ref = _parse_referencia(referencia)
                 referencia_13_julho = f"07/{ano_ref}" if mes_ref is not None and ano_ref is not None else "07/2026"
-                lancamentos.insert(0, {
-                    "etapa": "1ª parcela 13º",
-                    "referencia": referencia_13_julho,
-                    "dias_trabalhados": "",
-                    "dias_desconto": "",
-                    "ferias_bruto": 0.0,
-                    "proventos": [
-                        ("1ª parcela 13º", valor_decimo),
-                    ],
-                    "descontos": [],
-                    "bruto_base": valor_decimo,
-                    "is_13o": True,
-                })
+                alvo = None
+                for lanc in lancamentos:
+                    if "Pagamento" in lanc.get("etapa", "") and str(lanc.get("referencia", "")) == referencia_13_julho:
+                        alvo = lanc
+                        break
+                if alvo is None:
+                    for lanc in lancamentos:
+                        if "Pagamento" in lanc.get("etapa", ""):
+                            alvo = lanc
+                            break
+                if alvo is not None:
+                    alvo.setdefault("proventos", [])
+                    alvo["proventos"].append(("1ª parcela 13º", valor_decimo))
+                    alvo["bruto_base"] = round((alvo.get("bruto_base", 0.0) + valor_decimo), 2)
 
             resultados = []
             for lanc in lancamentos:
-                if lanc.get("is_13o"):
-                    resultados.append(_criar_resultado_13o_adiantamento(lanc["bruto_base"]))
-                elif "Pagamento" in lanc["etapa"]:
+                if "Pagamento" in lanc["etapa"]:
                     salario_base = valor_ajustado
                     ferias_bruto = lanc.get("ferias_bruto", 0.0)
                     total_bruto = salario_base + ferias_bruto
+                    for _, valor_item in lanc.get("proventos", []):
+                        if str(_).strip() == "1ª parcela 13º":
+                            total_bruto += valor_item
 
                     descontos_inss = calcular_inss_rateado([salario_base, ferias_bruto])
                     inss_salario = descontos_inss[0]
