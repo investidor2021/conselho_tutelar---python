@@ -789,49 +789,65 @@ if menu == "➕ Novo Pagamento":
     valor_total_13o = 0.0
     meses_13o = None
     historico_13o = []
-    if tipo == "Férias" and data_inicio:
-        mes_ref, _ = _parse_referencia(referencia)
-        if mes_ref == 7 or data_inicio.month in (6, 7):
+    mes_ref, _ = _parse_referencia(referencia)
+    is_ferias_13o = tipo == "Férias" and data_inicio and (mes_ref == 7 or data_inicio.month in (6, 7))
+    is_mensal_13o = tipo == "Mensal" and mes_ref == 7
+
+    if is_ferias_13o or is_mensal_13o:
+        if is_mensal_13o:
+            meses_13o = 6
+            referencia_decimo = f"07/{_parse_referencia(referencia)[1]}"
+            auto_decimo_julho = True
+            mes_extenso = "julho"
+        else:
             meses_13o = _meses_13o_ferias(data_inicio, referencia)
             referencia_decimo = _referencia_13o_para_ferias(referencia, data_inicio)
-            valor_total_13o = _calcular_total_13o_com_historico(
-                df_registros, nome, referencia, valor, meses=meses_13o
-            )
-            valor_sugerido = _calcular_13o_adiantamento_julho(valor_total_13o)
-            historico_13o = _montar_historico_13o(df_registros, nome, referencia, valor, meses_13o)
             auto_decimo_julho = mes_ref == 7
-            c13_1, c13_2 = st.columns([1, 2])
-            with c13_1:
-                pagar_decimo = st.checkbox(
-                    "Incluir 1ª parcela 13º no mês 07",
-                    value=auto_decimo_julho or True,
-                    disabled=auto_decimo_julho,
+            mes_extenso = "julho" if data_inicio.month == 7 else "junho"
+
+        valor_total_13o = _calcular_total_13o_com_historico(
+            df_registros, nome, referencia, valor, meses=meses_13o
+        )
+        valor_sugerido = _calcular_13o_adiantamento_julho(valor_total_13o)
+        historico_13o = _montar_historico_13o(df_registros, nome, referencia, valor, meses_13o)
+        
+        c13_1, c13_2 = st.columns([1, 2])
+        with c13_1:
+            pagar_decimo = st.checkbox(
+                "Incluir 1ª parcela 13º no mês 07" if is_mensal_13o else "Adiantamento 1ª parcela 13º",
+                value=auto_decimo_julho or True,
+                disabled=auto_decimo_julho,
+            )
+        with c13_2:
+            if is_mensal_13o:
+                st.caption(
+                    f"Pagamento Mensal de julho: adiantamento de 50% sobre 6/12 avos. "
+                    f"Referência do 13º: {referencia_decimo}."
                 )
-            with c13_2:
-                mes_extenso = "julho" if data_inicio.month == 7 else "junho"
+            else:
                 st.caption(
                     f"Férias em {mes_extenso}: adiantamento de 50% sobre {meses_13o}/12 avos. "
                     f"Referência do 13º: {referencia_decimo}."
                 )
-                if pagar_decimo:
-                    valor_decimo = st.number_input(
-                        "Valor 1ª parcela 13º",
-                        min_value=0.0,
-                        value=valor_sugerido,
-                        step=0.01,
-                        disabled=auto_decimo_julho,
-                    )
-                else:
-                    st.markdown(f"Valor sugerido: {_fmt_moeda_br(valor_sugerido)}")
+            if pagar_decimo:
+                valor_decimo = st.number_input(
+                    "Valor 1ª parcela 13º",
+                    min_value=0.0,
+                    value=valor_sugerido,
+                    step=0.01,
+                    disabled=auto_decimo_julho,
+                )
+            else:
+                st.markdown(f"Valor sugerido: {_fmt_moeda_br(valor_sugerido)}")
 
-            if auto_decimo_julho:
-                st.info("Referência em julho: o valor do 13º foi incluído automaticamente como 6/12 avos.")
-                if historico_13o:
-                    with st.expander("Histórico de cálculo do 13º"):
-                        for item in historico_13o:
-                            st.write(f"{item['referencia']}: salário {_fmt_moeda_br(item['salario'])} → 1/12 = {_fmt_moeda_br(item['avo'])} ({item['origem']})")
-                        st.write(f"Total calculado: {_fmt_moeda_br(valor_total_13o)}")
-                        st.write(f"Valor para o adiantamento: {_fmt_moeda_br(valor_sugerido)}")
+        if auto_decimo_julho:
+            st.info("Referência em julho: o valor do 13º foi incluído automaticamente como 6/12 avos.")
+            if historico_13o:
+                with st.expander("Histórico de cálculo do 13º"):
+                    for item in historico_13o:
+                        st.write(f"{item['referencia']}: salário {_fmt_moeda_br(item['salario'])} → 1/12 = {_fmt_moeda_br(item['avo'])} ({item['origem']})")
+                    st.write(f"Total calculado: {_fmt_moeda_br(valor_total_13o)}")
+                    st.write(f"Valor para o adiantamento: {_fmt_moeda_br(valor_sugerido)}")
     resultado = st.session_state.resultado
 
 
@@ -847,13 +863,15 @@ if menu == "➕ Novo Pagamento":
                 st.error("Já existem lançamentos de férias para esta referência. Ajuste o pagamento.")
                 st.stop()
             total_bruto = valor_ajustado
-            if pagar_decimo and valor_decimo > 0:
-                total_bruto += valor_decimo
             resultado_mensal = calcular_mensal(total_bruto)
+            
             if pagar_decimo and valor_decimo > 0:
                 resultado_mensal["proventos"] = [("Salário base", valor_ajustado), ("1ª parcela 13º", valor_decimo)]
                 resultado_mensal["decimo_terceiro"] = round(valor_decimo, 2)
-                resultado_mensal["bruto"] = round(total_bruto, 2)
+                resultado_mensal["bruto"] = round(total_bruto + valor_decimo, 2)
+                resultado_mensal["liquido"] = round(resultado_mensal["liquido"] + valor_decimo, 2)
+                resultado_mensal["decimo_adiantamento"] = _criar_resultado_13o_adiantamento(valor_decimo)
+                
             st.session_state.resultado = resultado_mensal
 
         elif tipo == "Férias":
