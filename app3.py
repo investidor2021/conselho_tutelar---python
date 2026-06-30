@@ -926,7 +926,14 @@ if menu == "➕ Novo Pagamento":
             )
 
             if data_inicio and data_inicio.month in (6, 7) and pagar_decimo and valor_decimo > 0:
-                alvo = lancamentos[0]
+                referencia_13_julho = referencia_decimo or _referencia_13o_para_ferias(referencia, data_inicio)
+                alvo = None
+                for lanc in lancamentos:
+                    if str(lanc.get("referencia", "")) == referencia_13_julho:
+                        alvo = lanc
+                        break
+                if alvo is None:
+                    alvo = lancamentos[0]
                 alvo.setdefault("proventos", [])
                 alvo["proventos"].append(("1ª parcela 13º", valor_decimo))
                 alvo["bruto_base"] = round((alvo.get("bruto_base", 0.0) + valor_decimo), 2)
@@ -986,7 +993,22 @@ if menu == "➕ Novo Pagamento":
                     
                     resultados.append(res)
                 else:
-                    resultados.append(calcular_mensal(lanc["bruto_base"]))
+                    has_decimo = False
+                    decimo_val = 0.0
+                    for desc, v in lanc.get("proventos", []):
+                        if "13º" in desc:
+                            has_decimo = True
+                            decimo_val = v
+                    
+                    bruto_tributavel = lanc.get("bruto_base", 0.0) - decimo_val
+                    res = calcular_mensal(bruto_tributavel)
+                    
+                    if has_decimo:
+                        res["bruto"] = round(res["bruto"] + decimo_val, 2)
+                        res["liquido"] = round(res["liquido"] + decimo_val, 2)
+                        res["decimo_adiantamento"] = _criar_resultado_13o_adiantamento(decimo_val)
+                        
+                    resultados.append(res)
 
             st.session_state.resultado_ferias = {
                 "lancamentos": lancamentos,
@@ -1153,10 +1175,10 @@ if menu == "➕ Novo Pagamento":
             }
             if pagar_decimo:
                 dados_pdf["proventos"] = [
-                    ("Salario base", valor_ajustado),
-                    ("13º", valor_decimo),
+                    ("Salário base", valor_ajustado),
+                    ("1ª parcela 13º", valor_decimo),
                 ]
-                dados_pdf["descontos"] = []
+                # Removida a limpeza de descontos para que o INSS/IRRF do salário base apareçam
                 dados_pdf["descontos_completos"] = False
 
             pdf_buffer = gerar_pdf_pagamento("brasao.jpg", dados_pdf, resultado)
