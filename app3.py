@@ -291,50 +291,92 @@ def _calcular_lancamentos_ferias(referencia, valor_base, data_inicio, dias_feria
     ferias_bruto = _calcular_ferias_bruto(valor_base, dias_ferias)
 
     lancamentos = []
-    # 1) Mês atual: salário mês anterior + férias
-    lancamentos.append({
-        "etapa": "Férias - Pagamento (mês atual)",
-        "referencia": referencia,
-        "dias_trabalhados": "",
-        "dias_desconto": "",
-        "ferias_bruto": ferias_bruto,
-        "proventos": [
-            ("Salário mês anterior", valor_base),
-            (f"Férias {dias_ferias} dias + 1/3", ferias_bruto),
-        ],
-        "descontos": [],
-        "bruto_base": valor_base + ferias_bruto,
-    })
+    
+    if 0 < dias_ferias_mes_seguinte <= 4:
+        # Regra do INSS: Pagar os dias trabalhados no mês 1, Mês 2 zera, Mês 3 integral
+        lancamentos.append({
+            "etapa": "Férias - Pagamento (mês atual)",
+            "referencia": referencia,
+            "dias_trabalhados": dias_trab_mes_inicio,
+            "dias_desconto": "",
+            "ferias_bruto": ferias_bruto,
+            "proventos": [
+                ("Salário mês anterior", valor_base),
+                (f"Férias {dias_ferias} dias + 1/3", ferias_bruto),
+                (f"Dias trabalhados ({dias_trab_mes_inicio} dias)", (valor_base / 30) * dias_trab_mes_inicio),
+            ],
+            "descontos": [],
+            "bruto_base": valor_base + ferias_bruto + ((valor_base / 30) * dias_trab_mes_inicio),
+        })
 
-    # 2) Mês seguinte: pagar dias trabalhados no mês do início
-    lancamentos.append({
-        "etapa": "Férias - Dias trabalhados (mês seguinte)",
-        "referencia": _add_meses(referencia, 1),
-        "dias_trabalhados": dias_trab_mes_inicio,
-        "dias_desconto": "",
-        "ferias_bruto": 0.0,
-        "proventos": [
-            (f"Dias trabalhados ({dias_trab_mes_inicio} dias)", (valor_base / 30) * dias_trab_mes_inicio),
-        ],
-        "descontos": [],
-        "bruto_base": (valor_base / 30) * dias_trab_mes_inicio,
-    })
+        lancamentos.append({
+            "etapa": "Férias - Dias trabalhados (mês seguinte)",
+            "referencia": _add_meses(referencia, 1),
+            "dias_trabalhados": 0,
+            "dias_desconto": "",
+            "ferias_bruto": 0.0,
+            "proventos": [],
+            "descontos": [],
+            "bruto_base": 0.0,
+        })
 
-    # 3) Mês 3: descontar dias de férias que caíram no mês seguinte
-    lancamentos.append({
-        "etapa": "Férias - Ajuste (mês 3)",
-        "referencia": _add_meses(referencia, 2),
-        "dias_trabalhados": dias_trab_mes_seguinte,
-        "dias_desconto": dias_ferias_mes_seguinte,
-        "ferias_bruto": 0.0,
-        "proventos": [
-            (f"Salário mês anterior", valor_base),
-        ],
-        "descontos": [
-            (f"Desconto férias ({dias_ferias_mes_seguinte} dias)", (valor_base / 30) * dias_ferias_mes_seguinte),
-        ],
-        "bruto_base": (valor_base / 30) * dias_trab_mes_seguinte,
-    })
+        lancamentos.append({
+            "etapa": "Férias - Ajuste (mês 3)",
+            "referencia": _add_meses(referencia, 2),
+            "dias_trabalhados": 30,
+            "dias_desconto": 0,
+            "ferias_bruto": 0.0,
+            "proventos": [
+                (f"Salário mês anterior", valor_base),
+            ],
+            "descontos": [],
+            "bruto_base": valor_base,
+        })
+    else:
+        # 1) Mês atual: salário mês anterior + férias
+        lancamentos.append({
+            "etapa": "Férias - Pagamento (mês atual)",
+            "referencia": referencia,
+            "dias_trabalhados": "",
+            "dias_desconto": "",
+            "ferias_bruto": ferias_bruto,
+            "proventos": [
+                ("Salário mês anterior", valor_base),
+                (f"Férias {dias_ferias} dias + 1/3", ferias_bruto),
+            ],
+            "descontos": [],
+            "bruto_base": valor_base + ferias_bruto,
+        })
+    
+        # 2) Mês seguinte: pagar dias trabalhados no mês do início
+        lancamentos.append({
+            "etapa": "Férias - Dias trabalhados (mês seguinte)",
+            "referencia": _add_meses(referencia, 1),
+            "dias_trabalhados": dias_trab_mes_inicio,
+            "dias_desconto": "",
+            "ferias_bruto": 0.0,
+            "proventos": [
+                (f"Dias trabalhados ({dias_trab_mes_inicio} dias)", (valor_base / 30) * dias_trab_mes_inicio),
+            ],
+            "descontos": [],
+            "bruto_base": (valor_base / 30) * dias_trab_mes_inicio,
+        })
+    
+        # 3) Mês 3: descontar dias de férias que caíram no mês seguinte
+        lancamentos.append({
+            "etapa": "Férias - Ajuste (mês 3)",
+            "referencia": _add_meses(referencia, 2),
+            "dias_trabalhados": dias_trab_mes_seguinte,
+            "dias_desconto": dias_ferias_mes_seguinte,
+            "ferias_bruto": 0.0,
+            "proventos": [
+                (f"Salário mês anterior", valor_base),
+            ],
+            "descontos": [
+                (f"Desconto férias ({dias_ferias_mes_seguinte} dias)", (valor_base / 30) * dias_ferias_mes_seguinte),
+            ],
+            "bruto_base": (valor_base / 30) * dias_trab_mes_seguinte,
+        })
 
     return lancamentos, end_date, dias_ferias_mes_inicio, dias_ferias_mes_seguinte
 
@@ -884,55 +926,64 @@ if menu == "➕ Novo Pagamento":
             )
 
             if data_inicio and data_inicio.month in (6, 7) and pagar_decimo and valor_decimo > 0:
-                referencia_13_julho = referencia_decimo or _referencia_13o_para_ferias(referencia, data_inicio)
-                alvo = None
-                for lanc in lancamentos:
-                    if str(lanc.get("referencia", "")) == referencia_13_julho:
-                        alvo = lanc
-                        break
-                if alvo is None:
-                    for lanc in lancamentos:
-                        if "Pagamento" in lanc.get("etapa", ""):
-                            alvo = lanc
-                            break
-                if alvo is not None:
-                    alvo.setdefault("proventos", [])
-                    alvo["proventos"].append(("1ª parcela 13º", valor_decimo))
-                    alvo["bruto_base"] = round((alvo.get("bruto_base", 0.0) + valor_decimo), 2)
+                alvo = lancamentos[0]
+                alvo.setdefault("proventos", [])
+                alvo["proventos"].append(("1ª parcela 13º", valor_decimo))
+                alvo["bruto_base"] = round((alvo.get("bruto_base", 0.0) + valor_decimo), 2)
+                alvo["is_13o"] = True
 
             resultados = []
             for lanc in lancamentos:
                 if "Pagamento" in lanc["etapa"]:
                     salario_base = valor_ajustado
                     ferias_bruto = lanc.get("ferias_bruto", 0.0)
-                    total_bruto = salario_base + ferias_bruto
-                    for _, valor_item in lanc.get("proventos", []):
-                        if str(_).strip() == "1ª parcela 13º":
-                            total_bruto += valor_item
+                    
+                    dias_trab_valor = 0.0
+                    has_decimo = False
+                    for desc, v in lanc.get("proventos", []):
+                        if "Dias trabalhados" in str(desc):
+                            dias_trab_valor = v
+                        if "1ª parcela 13º" in str(desc):
+                            has_decimo = True
 
-                    descontos_inss = calcular_inss_rateado([salario_base, ferias_bruto])
+                    total_tributavel = salario_base + ferias_bruto + dias_trab_valor
+                    
+                    valores_inss = [salario_base, ferias_bruto]
+                    if dias_trab_valor > 0:
+                        valores_inss.append(dias_trab_valor)
+                        
+                    descontos_inss = calcular_inss_rateado(valores_inss)
                     inss_salario = descontos_inss[0]
                     inss_ferias = descontos_inss[1]
-                    inss_total = round(inss_salario + inss_ferias, 2)
-                    base_inss = min(total_bruto, TETO_INSS)
-
-                    base_ir = total_bruto - inss_total
+                    inss_dias_trab = descontos_inss[2] if len(descontos_inss) > 2 else 0.0
+                    inss_total = round(inss_salario + inss_ferias + inss_dias_trab, 2)
+                    
+                    base_inss = min(total_tributavel, TETO_INSS)
+                    base_ir = total_tributavel - inss_total
                     ir = calcular_irrf_2026(base_ir)
 
+                    total_bruto = total_tributavel
+                    if has_decimo:
+                        total_bruto += valor_decimo
+
                     liquido = round(total_bruto - inss_total - ir["ir_final"], 2)
+
                     res = {
                         "bruto": round(total_bruto, 2),
-                        "base_inss": round(base_inss, 2),
-                        "inss": round(inss_total, 2),
+                        "base_inss": base_inss,
+                        "inss": inss_total,
+                        "inss_salario": round(inss_salario + inss_dias_trab, 2),
+                        "inss_ferias": inss_ferias,
                         "base_ir": round(base_ir, 2),
                         "ir_base": ir["ir_base"],
                         "redutor": ir["redutor"],
                         "irrf": ir["ir_final"],
                         "liquido": liquido,
                         "isento": ir["isento"],
-                        "inss_salario": round(inss_salario, 2),
-                        "inss_ferias": round(inss_ferias, 2),
                     }
+                    if has_decimo:
+                        res["decimo_adiantamento"] = _criar_resultado_13o_adiantamento(valor_decimo)
+                    
                     resultados.append(res)
                 else:
                     resultados.append(calcular_mensal(lanc["bruto_base"]))
@@ -1041,11 +1092,15 @@ if menu == "➕ Novo Pagamento":
                     "descontos_completos": True if "Pagamento" in lanc["etapa"] else False,
                 }
                 if "Pagamento" in lanc["etapa"]:
-                    dados_pdf["proventos"] = [
+                    proventos_pdf = [
                         ("Salário mês anterior", valor_ajustado),
                         (f"Férias {dias_ferias} dias", ferias_salario),
                         ("1/3 de férias", ferias_terco),
                     ]
+                    for desc, v in lanc.get("proventos", []):
+                        if "Dias trabalhados" in desc or "13º" in desc:
+                            proventos_pdf.append((desc, v))
+                    dados_pdf["proventos"] = proventos_pdf
                     dados_pdf["descontos"] = [
                         ("INSS salário", res.get("inss_salario", 0.0)),
                         ("INSS férias", res.get("inss_ferias", 0.0)),
