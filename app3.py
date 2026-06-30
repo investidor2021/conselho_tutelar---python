@@ -925,7 +925,10 @@ if menu == "➕ Novo Pagamento":
                 referencia, valor_ajustado, data_inicio, dias_ferias
             )
 
-            if data_inicio and data_inicio.month in (6, 7) and pagar_decimo and valor_decimo > 0:
+            mes_ref, _ = _parse_referencia(referencia)
+            is_ferias_13o_backend = data_inicio and (mes_ref == 7 or data_inicio.month in (6, 7))
+            
+            if is_ferias_13o_backend and pagar_decimo and valor_decimo > 0:
                 referencia_13_julho = referencia_decimo or _referencia_13o_para_ferias(referencia, data_inicio)
                 alvo = None
                 for lanc in lancamentos:
